@@ -1,0 +1,287 @@
+\documentclass[11pt, a4paper]{article}
+\usepackage[a4paper, margin=2.2cm]{geometry}
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[utf8]{inputenc}
+  \usepackage[T1]{fontenc}
+  \usepackage[spanish, es-nodecimaldot, es-tabla]{babel}
+\else
+  \usepackage{fontspec}
+  \usepackage[spanish, english, bidi=basic, provide=*]{babel}
+  \babelprovide[import, onchar=ids fonts]{spanish}
+  \babelprovide[import, onchar=ids fonts]{english}
+  \babelfont{rm}{Noto Sans}
+\fi
+\usepackage{enumitem}
+\setlist[itemize]{label=-}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage[table]{xcolor}
+\usepackage{hyperref}
+
+\definecolor{mareesblue}{RGB}{15, 76, 92}
+\definecolor{lightgray}{RGB}{245, 247, 250}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=mareesblue,
+    urlcolor=mareesblue
+}
+
+\title{\textbf{\textcolor{mareesblue}{Formulación Matemática y Demostración del Modelo de Simulación Adaptativa (Nivel 2)}}\\[0.4em]
+\large Reto Empresarial MAREES -- Cada gota cuenta (2026)}
+\author{Memoria Técnica de Ingeniería -- Modelado Físico-Químico y Control Operativo}
+\date{Octubre de 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Este documento presenta la formulación matemática, las deducciones analíticas y las demostraciones numéricas del prototipo de control adaptativo para una Planta de Tratamiento de Aguas Residuales (PTAR) con arquitectura de referencia tipo Tunja (Pretratamiento $\rightarrow$ Reactor UASB $\rightarrow$ Tanque Aireado $\rightarrow$ Clarificador Secundario). El modelo integra un estimador en línea de carga orgánica (\textit{Soft-Sensor}) con una ley de control de aireación y verificación de cumplimiento normativo bajo la Resolución 0631 de 2015, evaluando el impacto en el Costo Operativo Específico ($\text{CEO}$ en $\text{COP/m}^3$).
+\end{abstract}
+
+\tableofcontents
+\vspace{1em}
+\hrule
+\vspace{1em}
+
+\section{Frontera del Sistema y Variables de Estado}
+
+De acuerdo con los lineamientos de la Sección 8 de la guía del reto, se declara explícitamente como \textbf{frontera de evaluación económica y energética} el bloque de tratamiento biológico y clarificación secundaria, alimentado por las condiciones de entrada a la planta:
+
+\begin{itemize}
+    \item $Q(t)$: Caudal volumétrico horario del influente $\left[\text{m}^3/\text{h}\right]$ (variable medida en línea).
+    \item $\text{DQO}(t)$: Demanda Química de Oxígeno de entrada $\left[\text{mg O}_2/\text{L}\right]$ (variable de laboratorio con retardo analítico $\tau \approx 10\text{ h}$, estimada en línea mediante el \textit{Soft-Sensor}).
+    \item $\text{N}_{\text{NH}_4}(t)$: Concentración de nitrógeno amoniacal de entrada $\left[\text{mg N/L}\right]$.
+    \item $\text{OD}(t)$: Oxígeno disuelto en el reactor aerobio $\left[\text{mg O}_2/\text{L}\right]$ (variable de control medida en línea).
+    \item $T(t), \text{pH}(t)$: Temperatura $\left[^\circ\text{C}\right]$ y potencial de hidrógeno $\left[\text{unidades de pH}\right]$ del agua.
+\end{itemize}
+
+\section{Módulo 1: Estimación de Carga Orgánica Instantánea (Soft-Sensor)}
+
+\subsection{Formulación del Flujo Másico de Contaminante}
+La carga orgánica instantánea $L_{\text{DQO}}(t)$ expresa la masa de contaminante oxidable que ingresa al sistema por unidad de tiempo $\left[\text{kg DQO/h}\right]$. Se define mediante el producto del caudal volumétrico y la concentración estimada:
+
+\begin{equation}
+    L_{\text{DQO}}(t) = \frac{Q(t) \cdot \text{DQO}_{\text{est}}(t)}{1000}
+    \label{eq:carga_dqo}
+\end{equation}
+
+\textbf{Demostración de consistencia dimensional:}
+Dado que $1\text{ m}^3 = 1000\text{ L}$ y $1\text{ kg} = 10^6\text{ mg}$, el factor de conversión en el denominador resulta de:
+\begin{equation*}
+    \left[\frac{\text{m}^3}{\text{h}}\right] \cdot \left[\frac{\text{mg}}{\text{L}}\right] \cdot \left[\frac{1000\text{ L}}{1\text{ m}^3}\right] \cdot \left[\frac{1\text{ kg}}{10^6\text{ mg}}\right] = \frac{10^3}{10^6} \left[\frac{\text{kg}}{\text{h}}\right] = \frac{1}{1000} \left[\frac{\text{kg DQO}}{\text{h}}\right]
+\end{equation*}
+
+\subsection{Modelo Proporcional Base y Demostración del Efecto Cuadrático}
+Ante la ausencia del dato instantáneo de laboratorio, el modelo base aproxima la concentración actual $\text{DQO}_{\text{est}}(t)$ a partir de una concentración histórica de referencia $\text{DQO}_{\text{base}}$ modulada por la razón entre el caudal instantáneo $Q(t)$ y el caudal promedio histórico $Q_{\text{med}}$:
+
+\begin{equation}
+    \text{DQO}_{\text{est}}(t) = \text{DQO}_{\text{base}} \cdot \left(\frac{Q(t)}{Q_{\text{med}}}\right)
+    \label{eq:dqo_lineal}
+\end{equation}
+
+\textbf{Demostración de la dependencia cuadrática y sus limitaciones:}
+Sustituyendo la Ecuación \eqref{eq:dqo_lineal} directamente en la Ecuación \eqref{eq:carga_dqo}, se obtiene:
+\begin{align}
+    L_{\text{DQO}}(t) &= \frac{Q(t)}{1000} \cdot \left[ \text{DQO}_{\text{base}} \cdot \frac{Q(t)}{Q_{\text{med}}} \right] \nonumber \\
+    L_{\text{DQO}}(t) &= \frac{\text{DQO}_{\text{base}}}{1000 \cdot Q_{\text{med}}} \cdot Q(t)^2
+    \label{eq:carga_cuadratica}
+\end{align}
+
+Si el caudal experimenta un incremento de factor $k = \frac{Q(t)}{Q_{\text{med}}}$, la carga estimada escala con $k^2$. Por ejemplo, para $k = 1{,}5$ (incremento del $50\,\%$ en el caudal), la carga aumenta en $1{,}5^2 = 2{,}25$ ($+125\,\%$). Esto introduce un error severo durante eventos de \textbf{punta hidráulica por lluvias}, donde el agua pluvial diluye la concentración real del alcantarillado.
+
+\subsection{Modelo Generalizado No Lineal con Retroalimentación (Feedforward + Feedback)}
+Para superar la limitación cuadrática y responder a las tres situaciones de prueba exigidas (jornada ordinaria, punta hidráulica e incremento de carga orgánica/nitrogenada), se introduce el exponente de elasticidad caudal-concentración $\alpha$ y un término correctivo por sensores en línea ($\Delta\text{OD}, \Delta\text{pH}$):
+
+\begin{equation}
+    \text{DQO}_{\text{est}}(t) = \text{DQO}_{\text{base}} \cdot \left(\frac{Q(t)}{Q_{\text{med}}}\right)^{\alpha} \cdot \Phi(t)
+    \label{eq:dqo_general}
+\end{equation}
+
+Donde el régimen del exponente $\alpha$ se define por tramos operativos:
+\begin{equation}
+    \alpha = 
+    \begin{cases} 
+        0{,}7 \le \alpha \le 1{,}0 & \text{Jornada ordinaria seca (correlación positiva caudal--actividad urbana)} \\
+        \alpha = 0 & \text{Régimen de concentración constante independiente del caudal} \\
+        -0{,}6 \le \alpha < 0 & \text{Punta hidráulica por lluvia ($Q(t) > Q_{\text{umbral}}$, efecto de dilución)}
+    \end{cases}
+\end{equation}
+
+El factor $\Phi(t) \ge 1$ actúa como observador de perturbaciones cuando ingresa una descarga concentrada sin aumento de caudal (detectada por una caída abrupta del oxígeno disuelto $\text{OD}(t)$ en el reactor respecto al valor esperado):
+\begin{equation}
+    \Phi(t) = 1 + \gamma_{\text{OD}} \cdot \max\left(0, \, \text{OD}_{\text{meta}} - \text{OD}(t)\right)
+\end{equation}
+
+Sustituyendo la Ecuación \eqref{eq:dqo_general} en \eqref{eq:carga_dqo}, la ecuación general de carga de entrada queda demostrada como:
+\begin{equation}
+    L_{\text{DQO}}(t) = \frac{\text{DQO}_{\text{base}} \cdot Q_{\text{med}}}{1000} \cdot \left(\frac{Q(t)}{Q_{\text{med}}}\right)^{\alpha + 1} \cdot \Phi(t)
+    \label{eq:carga_general}
+\end{equation}
+
+\section{Módulo 2: Tren Biológico en Cascada (UASB + Tanque Aireado)}
+
+\subsection{Abatimiento Anaerobio en el Reactor UASB (Biológico 1)}
+En la arquitectura de referencia de Tunja, el reactor anaerobio de flujo ascendente (UASB) remueve una fracción $\eta_{\text{UASB}}$ de la carga orgánica entrante sin consumo eléctrico de aireación. La eficiencia $\eta_{\text{UASB}}(T, \text{pH})$ depende de la estabilidad térmica y del pH:
+
+\begin{equation}
+    \eta_{\text{UASB}}(t) = \eta_{\text{UASB,0}} \cdot f_T(T) \cdot f_{\text{pH}}(\text{pH})
+\end{equation}
+
+En condiciones normales de operación ($\eta_{\text{UASB}} \approx 0{,}60$), la \textbf{carga orgánica remanente} $L_{\text{rem}}(t)$ que ingresa al Tanque Aireado (Biológico 2) es:
+
+\begin{equation}
+    L_{\text{rem}}(t) = L_{\text{DQO}}(t) \cdot \left(1 - \eta_{\text{UASB}}(t)\right)
+    \label{eq:carga_rem}
+\end{equation}
+
+\subsection{Demanda Estequiométrica de Oxígeno en la Etapa Aerobia (Biológico 2)}
+La biomasa aerobia requiere oxígeno para oxidar tanto la materia orgánica carbonácea remanente ($L_{\text{rem}}$) como el nitrógeno amoniacal ($L_{\text{N}}(t) = \frac{Q(t) \cdot \text{N}_{\text{NH}_4}(t)}{1000}$). La tasa horaria de oxígeno requerido $R_{\text{O}_2}(t)$ $\left[\text{kg O}_2/\text{h}\right]$ se modela como:
+
+\begin{equation}
+    R_{\text{O}_2}(t) = a \cdot L_{\text{rem}}(t) + b \cdot L_{\text{N}}(t)
+    \label{eq:demanda_o2}
+\end{equation}
+
+Donde:
+\begin{itemize}
+    \item $a$: Coeficiente de requerimiento de oxígeno por masa de $\text{DQO}$ oxidada en el tanque aireado $\left[\text{kg O}_2/\text{kg DQO}\right]$ (valor de diseño: $a = 1{,}0\text{ kg O}_2/\text{kg DQO}$).
+    \item $b$: Coeficiente estequiométrico de nitrificación completa de amonio a nitrato ($\text{NH}_4^+ + 2\text{O}_2 \rightarrow \text{NO}_3^- + \text{H}_2\text{O} + 2\text{H}^+$), equivalente a $b = 4{,}57\text{ kg O}_2/\text{kg N}$.
+\end{itemize}
+
+\subsection{Ley de Control de Potencia Eléctrica de Sopladores}
+Sea $\text{SAE}$ la Eficiencia Estándar de Aireación de los sopladores $\left[\text{kg O}_2/\text{kWh}\right]$ y $P_{\text{min}}$ $\left[\text{kW}\right]$ la potencia mínima requerida para mantener los sólidos en suspensión (evitando la sedimentación de biomasa en el reactor aerobio).
+
+\begin{itemize}
+    \item \textbf{Escenario A (Línea Base -- Operación Fija):}
+    Los sopladores operan a potencia constante $P_{\text{base}}(t) = P_{\text{fija}}$, dimensionada para cubrir la demanda de la hora pico de la jornada:
+    \begin{equation}
+        P_{\text{base}}(t) = \max_{t \in [1,24]} \left(\frac{R_{\text{O}_2}(t)}{\text{SAE}}\right)
+    \end{equation}
+
+    \item \textbf{Escenario B (Propuesta Adaptativa):}
+    La potencia eléctrica $P_{\text{prop}}(t)$ se modula dinámicamente en función de la demanda estimada $R_{\text{O}_2}(t)$ y del lazo cerrado proporcional de oxígeno disuelto $\text{OD}(t)$:
+    \begin{equation}
+        P_{\text{prop}}(t) = \max\left( P_{\text{min}}, \; \frac{R_{\text{O}_2}(t)}{\text{SAE}} \cdot \left[ 1 + k_p \left(\text{OD}_{\text{meta}} - \text{OD}(t)\right) \right] \right)
+        \label{eq:potencia_adaptativa}
+    \end{equation}
+\end{itemize}
+
+El oxígeno efectivamente transferido al reactor en cualquier escenario viene dado por:
+\begin{equation}
+    S_{\text{O}_2}(t) = P(t) \cdot \text{SAE}
+\end{equation}
+
+\section{Módulo 3: Verificación Matemática de Calidad del Efluente}
+
+Para dar cumplimiento riguroso a la Sección 9 de la guía (evitando etiquetas cualitativas sin sustento), la eficiencia de remoción aerobia $\eta_{\text{aer}}(t)$ se vincula directamente con el balance entre suministro y demanda de oxígeno:
+
+\begin{equation}
+    \eta_{\text{aer}}(t) = \eta_{\text{aer,max}} \cdot \min\left(1, \; \frac{S_{\text{O}_2}(t)}{R_{\text{O}_2}(t)}\right)
+\end{equation}
+
+La carga remanente que abandona el clarificador secundario hacia el cuerpo receptor es:
+\begin{equation}
+    L_{\text{salida}}(t) = L_{\text{rem}}(t) \cdot \left(1 - \eta_{\text{aer}}(t)\right)
+\end{equation}
+
+Reinvirtiendo la relación volumétrica de la Ecuación \eqref{eq:carga_dqo}, se obtiene la concentración de salida $\text{DQO}_{\text{salida}}(t)$ $\left[\text{mg O}_2/\text{L}\right]$ y $\text{DBO}_{5,\text{salida}}(t)$ (asumiendo razón de biodegradabilidad $\beta = \text{DBO}_5/\text{DQO} \approx 0{,}45$ en el efluente tratado):
+
+\begin{equation}
+    \text{DQO}_{\text{salida}}(t) = \frac{1000 \cdot L_{\text{salida}}(t)}{Q(t)} \le \text{DQO}_{\text{norma}}
+    \label{eq:dqo_salida}
+\end{equation}
+\begin{equation}
+    \text{DBO}_{5,\text{salida}}(t) = \beta \cdot \text{DQO}_{\text{salida}}(t) \le \text{DBO}_{5,\text{norma}}
+\end{equation}
+
+\textbf{Demostración algebraica de la concentración de salida:}
+Sustituyendo las ecuaciones \eqref{eq:carga_dqo} y \eqref{eq:carga_rem} en \eqref{eq:dqo_salida}:
+\begin{align}
+    \text{DQO}_{\text{salida}}(t) &= \frac{1000}{Q(t)} \cdot \left[ \frac{Q(t) \cdot \text{DQO}_{\text{est}}(t)}{1000} \cdot (1 - \eta_{\text{UASB}}) \cdot (1 - \eta_{\text{aer}}(t)) \right] \nonumber \\
+    \text{DQO}_{\text{salida}}(t) &= \text{DQO}_{\text{est}}(t) \cdot (1 - \eta_{\text{UASB}}) \cdot (1 - \eta_{\text{aer}}(t))
+    \label{eq:demostracion_salida}
+\end{align}
+Para $\eta_{\text{UASB}} = 0{,}60$ y $\eta_{\text{aer}}(t) = 0{,}80$ (cuando $S_{\text{O}_2}(t) \ge R_{\text{O}_2}(t)$), la fracción que escapa al efluente es $(1 - 0{,}60)(1 - 0{,}80) = 0{,}40 \times 0{,}20 = 0{,}08$ ($92\,\%$ de remoción global combinada).
+
+\section{Módulo 4: Función Objetivo y Métrica Económica (CEO)}
+
+El Costo Operativo Específico ($\text{CEO}$, en $\text{COP/m}^3$) sobre un horizonte de evaluación $T_H = 24\text{ h}$ integra el costo de energía eléctrica, dosificación contingente de reactivos químicos, gestión de lodos y costos adicionales de instrumentación/mantenimiento ($C_{\text{adicional}}$):
+
+\begin{equation}
+    \text{CEO} = \frac{\displaystyle\sum_{t=1}^{24} \left[ P(t) \cdot \Delta t \cdot C_{\text{kWh}} + D_{\text{quim}}(t) \cdot \Delta t \cdot C_{\text{quim}} + M_{\text{lodo}}(t) \cdot C_{\text{lodo}} \right] + C_{\text{adicional}}}{\displaystyle\sum_{t=1}^{24} Q(t) \cdot \Delta t}
+    \label{eq:ceo}
+\end{equation}
+
+El porcentaje de optimización exigido en la Sección 8 se calcula mediante:
+\begin{equation}
+    \text{Optimización (\%)} = 100 \times \frac{\text{CEO}_{\text{base}} - \text{CEO}_{\text{propuesta}}}{\text{CEO}_{\text{base}}}
+    \label{eq:optimizacion}
+\end{equation}
+
+\section{Demostración Numérica Paso a Paso (Tres Regímenes Horarios)}
+
+Se definen los siguientes parámetros de simulación explíctamente declarados:
+\begin{itemize}
+    \item $Q_{\text{med}} = 100\text{ m}^3/\text{h}$, $\text{DQO}_{\text{base}} = 300\text{ mg/L}$, $\alpha = 1{,}0$ (jornada ordinaria), $L_{\text{N}} = 0$ (simplificación carbonácea base).
+    \item $\eta_{\text{UASB}} = 0{,}60$, $a = 1{,}0\text{ kg O}_2/\text{kg DQO}$, $\text{SAE} = 1{,}5\text{ kg O}_2/\text{kWh}$, $\eta_{\text{aer,max}} = 0{,}80$, $P_{\text{min}} = 6{,}0\text{ kW}$.
+    \item Potencia fija de Línea Base (calibrada para el pico de $Q = 150\text{ m}^3/\text{h}$): $P_{\text{base}} = 18{,}0\text{ kW}$.
+\end{itemize}
+
+\subsection{Caso 1: Hora Valle de Madrugada ($Q(t) = 50\text{ m}^3/\text{h}$)}
+\begin{enumerate}
+    \item \textbf{Estimación de DQO:} $\text{DQO}_{\text{est}} = 300 \times (50/100)^1 = 150\text{ mg/L}$.
+    \item \textbf{Carga de entrada:} $L_{\text{DQO}} = (50 \times 150)/1000 = 7{,}5\text{ kg DQO/h}$.
+    \item \textbf{Carga remanente post-UASB:} $L_{\text{rem}} = 7{,}5 \times (1 - 0{,}60) = 3{,}0\text{ kg DQO/h}$.
+    \item \textbf{Demanda de oxígeno:} $R_{\text{O}_2} = 1{,}0 \times 3{,}0 = 3{,}0\text{ kg O}_2/\text{h}$.
+    \item \textbf{Potencia requerida teórica:} $P_{\text{req}} = 3{,}0 / 1{,}5 = 2{,}0\text{ kW}$. Como $2{,}0 < P_{\text{min}}$, el controlador aplica el piso de seguridad de mezcla: $P_{\text{prop}} = 6{,}0\text{ kW}$ (frente a $P_{\text{base}} = 18{,}0\text{ kW}$).
+    \item \textbf{Calidad del efluente:} $\text{DQO}_{\text{salida}} = 150 \times 0{,}40 \times 0{,}20 = 12{,}0\text{ mg/L} \le 180\text{ mg/L}$ (\textbf{Cumple Resolución 0631}).
+\end{enumerate}
+
+\subsection{Caso 2: Hora Promedio ($Q(t) = 100\text{ m}^3/\text{h}$)}
+\begin{enumerate}
+    \item \textbf{Estimación de DQO:} $\text{DQO}_{\text{est}} = 300 \times (100/100)^1 = 300\text{ mg/L}$.
+    \item \textbf{Carga de entrada:} $L_{\text{DQO}} = (100 \times 300)/1000 = 30{,}0\text{ kg DQO/h}$.
+    \item \textbf{Carga remanente post-UASB:} $L_{\text{rem}} = 30{,}0 \times 0{,}40 = 12{,}0\text{ kg DQO/h}$.
+    \item \textbf{Demanda de oxígeno y potencia:} $R_{\text{O}_2} = 12{,}0\text{ kg O}_2/\text{h} \Rightarrow P_{\text{prop}} = \max(6{,}0, \, 12{,}0/1{,}5) = 8{,}0\text{ kW}$.
+    \item \textbf{Calidad del efluente:} $\text{DQO}_{\text{salida}} = 300 \times 0{,}08 = 24{,}0\text{ mg/L} \le 180\text{ mg/L}$ (\textbf{Cumple Resolución 0631}).
+\end{enumerate}
+
+\subsection{Caso 3: Hora Pico ($Q(t) = 150\text{ m}^3/\text{h}$)}
+\begin{enumerate}
+    \item \textbf{Estimación de DQO:} $\text{DQO}_{\text{est}} = 300 \times (150/100)^1 = 450\text{ mg/L}$.
+    \item \textbf{Carga de entrada:} $L_{\text{DQO}} = (150 \times 450)/1000 = 67{,}5\text{ kg DQO/h}$.
+    \item \textbf{Carga remanente post-UASB:} $L_{\text{rem}} = 67{,}5 \times 0{,}40 = 27{,}0\text{ kg DQO/h}$.
+    \item \textbf{Demanda de oxígeno y potencia:} $R_{\text{O}_2} = 27{,}0\text{ kg O}_2/\text{h} \Rightarrow P_{\text{prop}} = 27{,}0 / 1{,}5 = 18{,}0\text{ kW}$.
+    \item \textbf{Calidad del efluente:} $\text{DQO}_{\text{salida}} = 450 \times 0{,}08 = 36{,}0\text{ mg/L} \le 180\text{ mg/L}$ (\textbf{Cumple Resolución 0631}).
+\end{enumerate}
+
+\vspace{0.5em}
+\begin{table}[h!]
+\centering
+\small
+\rowcolors{2}{lightgray}{white}
+\begin{tabularx}{\textwidth}{l c c c}
+\toprule
+\textbf{Variable / Indicador del Modelo} & \textbf{Valle ($50\text{ m}^3/\text{h}$)} & \textbf{Media ($100\text{ m}^3/\text{h}$)} & \textbf{Pico ($150\text{ m}^3/\text{h}$)} \\
+\midrule
+Concentración estimada $\text{DQO}_{\text{est}}(t)$ $\left[\text{mg/L}\right]$ & $150{,}0$ & $300{,}0$ & $450{,}0$ \\
+Carga de entrada $L_{\text{DQO}}(t)$ $\left[\text{kg DQO/h}\right]$ & $7{,}5$ & $30{,}0$ & $67{,}5$ \\
+Carga remanente post-UASB $L_{\text{rem}}(t)$ $\left[\text{kg DQO/h}\right]$ & $3{,}0$ & $12{,}0$ & $27{,}0$ \\
+Oxígeno requerido $R_{\text{O}_2}(t)$ $\left[\text{kg O}_2/\text{h}\right]$ & $3{,}0$ & $12{,}0$ & $27{,}0$ \\
+Potencia Escenario A -- Fija $P_{\text{base}}(t)$ $\left[\text{kW}\right]$ & $18{,}0$ & $18{,}0$ & $18{,}0$ \\
+Potencia Escenario B -- Adaptativa $P_{\text{prop}}(t)$ $\left[\text{kW}\right]$ & $6{,}0$ & $8{,}0$ & $18{,}0$ \\
+Electricidad específica Escenario A $\left[\text{kWh/m}^3\right]$ & $0{,}360$ & $0{,}180$ & $0{,}120$ \\
+Electricidad específica Escenario B $\left[\text{kWh/m}^3\right]$ & $0{,}120$ & $0{,}080$ & $0{,}120$ \\
+Calidad efluente $\text{DQO}_{\text{salida}}(t)$ $\left[\text{mg O}_2/\text{L}\right]$ (Límite $\le 180$) & $12{,}0$ & $24{,}0$ & $36{,}0$ \\
+\textbf{Reducción horaria de energía eléctrica (\%)} & \textbf{66,7\,\%} & \textbf{55,6\,\%} & \textbf{0,0\,\%} \\
+\bottomrule
+\end{tabularx}
+\caption{Síntesis demostrativa del desempeño horario en la frontera del Tanque Aireado.}
+\end{table}
+
+\end{document}
